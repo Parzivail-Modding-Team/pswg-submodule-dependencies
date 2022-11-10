@@ -2,6 +2,7 @@ plugins {
 	`kotlin-dsl`
 	`maven-publish`
 	id("org.jetbrains.dokka") version "1.7.20"
+	signing
 }
 
 group = "com.parzivail.internal"
@@ -30,10 +31,20 @@ tasks.withType<Jar> {
 	}
 }
 
+gradlePlugin {
+	plugins {
+		all {
+			displayName = "Fabric Loom subproject dependencies"
+			description = "Gradle plugin to forward dependencies of Fabric Loom subprojects to their dependents"
+		}
+	}
+}
+
 publishing {
 	publications {
 		withType<MavenPublication> {
 			pom {
+				name.set("Fabric Loom subproject dependencies")
 				description.set("Gradle plugin to forward dependencies of Fabric Loom subprojects to their dependents")
 				url.set("https://github.com/Parzivail-Modding-Team/pswg-submodule-dependencies")
 				licenses {
@@ -69,8 +80,24 @@ publishing {
 			}
 		}
 	}
+
+	repositories {
+		maven(url = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/") {
+			name = "mavenCentral"
+
+			credentials {
+				username = project.findProperty("ossrhUsername") as String?
+				password = project.findProperty("ossrhPassword") as String?
+			}
+		}
+	}
 }
 
 dependencies {
 	implementation("net.fabricmc:fabric-loom:1.0-SNAPSHOT")
+}
+
+signing {
+	useGpgCmd()
+	sign(publishing.publications)
 }

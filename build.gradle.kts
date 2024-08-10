@@ -1,12 +1,12 @@
 plugins {
 	`kotlin-dsl`
 	`maven-publish`
-	id("org.jetbrains.dokka") version "1.7.20"
+	id("org.jetbrains.dokka") version "1.9.20"
 	signing
 }
 
 group = "com.parzivail.internal"
-version = "0.1"
+version = "0.2"
 
 repositories {
 	// Use Maven Central for resolving dependencies.
@@ -94,7 +94,7 @@ publishing {
 }
 
 dependencies {
-	implementation("net.fabricmc:fabric-loom:1.0-SNAPSHOT")
+	implementation("net.fabricmc:fabric-loom:1.7-SNAPSHOT")
 }
 
 signing {

@@ -3,6 +3,10 @@ package com.parzivail.internal
 import java.util.Collections
 import java.util.EnumMap
 import java.util.IdentityHashMap
+import org.gradle.api.Project
+import org.gradle.api.artifacts.ProjectDependency
+import org.gradle.api.tasks.SourceSet
+import org.gradle.api.tasks.SourceSetContainer
 
 plugins {
 	`java-library`
@@ -40,37 +44,77 @@ fun resolveProject(dependency: ProjectDependency): Project =
 	project.rootProject.findProject(dependency.path)
 		?: error("Could not resolve project dependency path ${dependency.path}")
 
+fun Project.findClientSourceSet(): SourceSet? =
+	extensions.findByType(SourceSetContainer::class.java)?.findByName("client")
+
+fun isSubmoduleProjectDependency(dependency: ProjectDependency): Boolean =
+	dependency.targetConfiguration == null || dependency.targetConfiguration == "namedElements"
+
+fun wireClientSourceSet(consumerProject: Project, producerProject: Project) {
+	val consumerClient = consumerProject.findClientSourceSet() ?: return
+	val producerClient = producerProject.findClientSourceSet() ?: return
+
+	consumerClient.compileClasspath += producerClient.output
+	consumerClient.runtimeClasspath += producerClient.output
+
+	consumerProject.tasks.named(consumerClient.classesTaskName) {
+		dependsOn(producerProject.tasks.named(producerClient.classesTaskName))
+	}
+}
+
 fun importFrom(dependencyProject: Project, relation: ConfigurationType): Boolean {
 	if (dependencyProject in visitedProjects[relation]!! && dependencyProject !== project) return false
 	visitedProjects[relation]!!.add(dependencyProject)
-	dependencies {
-		for (configType in ConfigurationType.values()) {
-			val innerRelation = computeType(relation, configType)
-			if (innerRelation != null) {
-				for (dependency in dependencyProject.configurations[configType.gradleConfig]?.dependencies ?: setOf())
-					if (dependency !is ProjectDependency || (dependency.targetConfiguration != "namedElements" || importFrom(
-							resolveProject(dependency),
-							innerRelation
-						))
-					)
-						innerRelation.gradleConfig(dependency.copy())
-				for (dependency in dependencyProject.configurations[configType.loomConfig]?.dependencies ?: setOf())
-					innerRelation.loomConfig(dependency.copy())
+	for (configType in ConfigurationType.values()) {
+		val innerRelation = computeType(relation, configType) ?: continue
+
+		for (dependency in dependencyProject.configurations.findByName(configType.gradleConfig)?.dependencies ?: setOf()) {
+			if (dependency is ProjectDependency && isSubmoduleProjectDependency(dependency)) {
+				val resolvedProject = resolveProject(dependency)
+				if (!importFrom(resolvedProject, innerRelation)) {
+					continue
+				}
+			}
+
+			if (project.configurations.findByName(innerRelation.gradleConfig) != null) {
+				project.dependencies.add(innerRelation.gradleConfig, dependency.copy())
+			}
+		}
+
+		for (dependency in dependencyProject.configurations.findByName(configType.loomConfig)?.dependencies ?: setOf()) {
+			if (project.configurations.findByName(innerRelation.loomConfig) != null) {
+				project.dependencies.add(innerRelation.loomConfig, dependency.copy())
 			}
 		}
 	}
+
 	return true
 }
 
 afterEvaluate {
+	if (project == project.rootProject) {
+		return@afterEvaluate
+	}
+
 	for ((configType, dependencies) in ConfigurationType.values()
 		.associateWithTo(EnumMap(ConfigurationType::class.java)) {
 			project.configurations[it.gradleConfig]?.dependencies?.toSet() ?: setOf()
 		}) {
-		for (dependency in dependencies)
-			if (dependency is ProjectDependency && dependency.targetConfiguration == "namedElements") {
-				importFrom(resolveProject(dependency), configType)
+		for (dependency in dependencies) {
+			if (dependency is ProjectDependency && isSubmoduleProjectDependency(dependency)) {
+				val dependencyProject = resolveProject(dependency)
+				val processDependency = {
+					wireClientSourceSet(project, dependencyProject)
+					importFrom(dependencyProject, configType)
+				}
+
+				if (!dependencyProject.state.executed) {
+					project.evaluationDependsOn(dependency.path)
+				}
+
+				processDependency()
 			}
+		}
 	}
 
 	tasks.classes {

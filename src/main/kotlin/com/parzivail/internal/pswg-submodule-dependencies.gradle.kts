@@ -36,6 +36,10 @@ fun computeType(consumerType: ConfigurationType, producerType: ConfigurationType
 val visitedProjects: Map<ConfigurationType, MutableSet<Project>> = ConfigurationType.values()
 	.associateWithTo(EnumMap(ConfigurationType::class.java)) { Collections.newSetFromMap(IdentityHashMap()) }
 
+fun resolveProject(dependency: ProjectDependency): Project =
+	project.rootProject.findProject(dependency.path)
+		?: error("Could not resolve project dependency path ${dependency.path}")
+
 fun importFrom(dependencyProject: Project, relation: ConfigurationType): Boolean {
 	if (dependencyProject in visitedProjects[relation]!! && dependencyProject !== project) return false
 	visitedProjects[relation]!!.add(dependencyProject)
@@ -45,7 +49,7 @@ fun importFrom(dependencyProject: Project, relation: ConfigurationType): Boolean
 			if (innerRelation != null) {
 				for (dependency in dependencyProject.configurations[configType.gradleConfig]?.dependencies ?: setOf())
 					if (dependency !is ProjectDependency || (dependency.targetConfiguration != "namedElements" || importFrom(
-							dependency.dependencyProject,
+							resolveProject(dependency),
 							innerRelation
 						))
 					)
@@ -65,7 +69,7 @@ afterEvaluate {
 		}) {
 		for (dependency in dependencies)
 			if (dependency is ProjectDependency && dependency.targetConfiguration == "namedElements") {
-				importFrom(dependency.dependencyProject, configType)
+				importFrom(resolveProject(dependency), configType)
 			}
 	}
 

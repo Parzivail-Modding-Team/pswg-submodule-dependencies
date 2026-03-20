@@ -1,7 +1,9 @@
 plugins {
 	`kotlin-dsl`
 	`maven-publish`
-	id("org.jetbrains.dokka") version "1.9.20"
+	id("com.gradleup.nmcp") version "1.4.4"
+	id("com.gradleup.nmcp.aggregation") version "1.4.4"
+	id("org.jetbrains.dokka") version "2.2.0-Beta"
 	signing
 }
 
@@ -22,7 +24,7 @@ java {
 }
 
 tasks.named<Jar>("javadocJar") {
-	from(tasks.named("dokkaJavadoc"))
+	from(tasks.named("dokkaGenerate"))
 }
 
 tasks.withType<Jar> {
@@ -58,6 +60,10 @@ publishing {
 						id.set("kb1000")
 						name.set("kb1000")
 					}
+					developer {
+						id.set("parzivail")
+						name.set("parzivail")
+					}
 				}
 				scm {
 					url.set("https://github.com/Parzivail-Modding-Team/pswg-submodule-dependencies")
@@ -80,24 +86,23 @@ publishing {
 			}
 		}
 	}
-
-	repositories {
-		maven(url = "https://s01.oss.sonatype.org/service/local/staging/deploy/maven2/") {
-			name = "mavenCentral"
-
-			credentials {
-				username = project.findProperty("ossrhUsername") as String?
-				password = project.findProperty("ossrhPassword") as String?
-			}
-		}
-	}
 }
 
 dependencies {
-	implementation("net.fabricmc:fabric-loom:1.7-SNAPSHOT")
+	implementation("net.fabricmc:fabric-loom:1.15.5")
+	nmcpAggregation(project(path))
 }
 
 signing {
 	useGpgCmd()
 	sign(publishing.publications)
+}
+
+nmcpAggregation {
+	centralPortal {
+		username = (findProperty("ossrhUsername") as String?) ?: ""
+		password = (findProperty("ossrhPassword") as String?) ?: ""
+		publishingType = "AUTOMATIC"
+		publicationName = "${project.group}:${project.name}:${project.version}"
+	}
 }
